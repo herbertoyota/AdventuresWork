@@ -1,0 +1,122 @@
+# Sales per Quarter
+
+SELECT 
+    YEAR(OrderDate) AS SalesYear,
+    DATEPART(QUARTER, OrderDate) AS Quarter,
+    SUM(sod.LineTotal) AS TotalSales
+FROM Sales.SalesOrderHeader soh
+JOIN Sales.SalesOrderDetail sod ON soh.SalesOrderID = sod.SalesOrderID
+GROUP BY YEAR(OrderDate), DATEPART(QUARTER, OrderDate)
+ORDER BY SalesYear, 
+
+# Top10 products by Revenue
+
+SELECT TOP 10 
+    p.Name AS ProductName,
+    SUM(sod.LineTotal) AS Revenue
+FROM Sales.SalesOrderDetail sod
+JOIN Production.Product p ON sod.ProductID = p.ProductID
+GROUP BY p.Name
+ORDER BY Revenue DESC;
+
+# Sales by Product Category
+
+SELECT 
+    pc.Name AS ProductCategory,
+    ROUND(SUM(sod.LineTotal), 2) AS Revenue,
+    ROUND(SUM(sod.LineTotal) * 100.0 / (SELECT SUM(LineTotal) FROM Sales.SalesOrderDetail), 2) AS ParticipationPercent
+FROM Sales.SalesOrderDetail sod
+JOIN Production.Product p ON sod.ProductID = p.ProductID
+JOIN Production.ProductSubcategory ps ON p.ProductSubcategoryID = ps.ProductSubcategoryID
+JOIN Production.ProductCategory pc ON ps.ProductCategoryID = pc.ProductCategoryID
+GROUP BY pc.Name
+ORDER BY Revenue DESC;
+
+# Revenue vs. Cost vs. Profit
+SELECT 
+    pc.Name AS ProductCategory,
+    SUM(sod.LineTotal) AS Revenue,
+    SUM(sod.OrderQty * p.StandardCost) AS Cost,
+    SUM(sod.LineTotal) - SUM(sod.OrderQty * p.StandardCost) AS Profit
+FROM Sales.SalesOrderDetail sod
+JOIN Production.Product p ON sod.ProductID = p.ProductID
+JOIN Production.ProductSubcategory ps ON p.ProductSubcategoryID = ps.ProductSubcategoryID
+JOIN Production.ProductCategory pc ON ps.ProductCategoryID = pc.ProductCategoryID
+GROUP BY pc.Name
+ORDER BY Profit DESC;
+
+# Purchase customers more than 600k
+SELECT 
+    p.FirstName + ' ' + p.LastName AS FullName,
+    COUNT(DISTINCT soh.SalesOrderID) AS NumberOfOrders,
+    ROUND(SUM(sod.LineTotal), 2) AS TotalValue
+FROM Sales.SalesOrderHeader AS soh
+INNER JOIN Sales.SalesOrderDetail AS sod
+    ON soh.SalesOrderID = sod.SalesOrderID
+INNER JOIN Sales.Customer AS c
+    ON soh.CustomerID = c.CustomerID
+INNER JOIN Person.Person AS p
+    ON c.PersonID = p.BusinessEntityID
+GROUP BY 
+    p.FirstName, p.LastName
+HAVING 
+    SUM(sod.LineTotal) > 600000
+ORDER BY 
+    TotalValue DESC;
+
+#Margin Profit by quarter
+SELECT 
+    CAST(DATEPART(QUARTER, soh.OrderDate) AS VARCHAR(1)) 
+        + 'Q' + CAST(DATEPART(YEAR, soh.OrderDate) AS VARCHAR(4)) AS QuarterLabel,
+        ROUND(
+        (SUM(sod.LineTotal) - SUM(p.StandardCost * sod.OrderQty)) / SUM(sod.LineTotal) * 100, 
+        2
+    ) AS ProfitMarginPercent
+FROM Sales.SalesOrderHeader AS soh
+INNER JOIN Sales.SalesOrderDetail AS sod
+    ON soh.SalesOrderID = sod.SalesOrderID
+INNER JOIN Production.Product AS p
+    ON sod.ProductID = p.ProductID
+GROUP BY 
+    DATEPART(YEAR, soh.OrderDate),
+    DATEPART(QUARTER, soh.OrderDate)
+ORDER BY 
+    DATEPART(YEAR, soh.OrderDate),
+    DATEPART(QUARTER, soh.OrderDate);
+
+# Discount
+WITH QuarterlyMargin AS (
+    SELECT 
+        CAST(DATEPART(QUARTER, soh.OrderDate) AS VARCHAR(1)) 
+            + 'Q' + CAST(DATEPART(YEAR, soh.OrderDate) AS VARCHAR(4)) AS QuarterLabel,
+        DATEPART(YEAR, soh.OrderDate) AS OrderYear,
+        DATEPART(QUARTER, soh.OrderDate) AS OrderQuarter,
+        ROUND(
+            (SUM(sod.LineTotal) - SUM(p.StandardCost * sod.OrderQty)) / SUM(sod.LineTotal) * 100, 
+            2
+        ) AS ProfitMarginPercent
+    FROM Sales.SalesOrderHeader AS soh
+    INNER JOIN Sales.SalesOrderDetail AS sod
+        ON soh.SalesOrderID = sod.SalesOrderID
+    INNER JOIN Production.Product AS p
+        ON sod.ProductID = p.ProductID
+    GROUP BY 
+        DATEPART(YEAR, soh.OrderDate),
+        DATEPART(QUARTER, soh.OrderDate)
+)
+SELECT
+    ROUND(AVG(CASE 
+                WHEN DATEPART(YEAR, soh.OrderDate) = 2012 
+                     AND DATEPART(QUARTER, soh.OrderDate) = 2 
+                THEN sod.UnitPriceDiscount 
+              END) * 100, 2) AS AvgDiscount_2Q2012,
+    ROUND(AVG(sod.UnitPriceDiscount) * 100, 2) AS AvgDiscount_AllQuarters
+FROM Sales.SalesOrderHeader AS soh
+INNER JOIN Sales.SalesOrderDetail AS sod
+    ON soh.SalesOrderID = sod.SalesOrderID;
+
+
+
+
+
+
